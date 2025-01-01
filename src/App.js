@@ -5,145 +5,173 @@ import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
 import js from 'react-syntax-highlighter/dist/esm/languages/hljs/javascript';
 import python from 'react-syntax-highlighter/dist/esm/languages/hljs/python';
 import { docco } from 'react-syntax-highlighter/dist/esm/styles/hljs';
-import './App.css'; // Ensure this line is present to include your CSS
+import './App.css'; // Tailwind CSS
 
 SyntaxHighlighter.registerLanguage('javascript', js);
 SyntaxHighlighter.registerLanguage('python', python);
 
 function App() {
+    const [fieldCount, setFieldCount] = useState(1);
+    const [fields, setFields] = useState([{ type: 'text', name: '' }]);
+    const [apiToken, setApiToken] = useState('');
+    const [userId, setUserId] = useState('');
+    const [password, setPassword] = useState('');
     const [endpoint, setEndpoint] = useState('');
-    const [method, setMethod] = useState('GET');
-    const [params, setParams] = useState([{ name: '', type: 'string' }]);
-    const [language, setLanguage] = useState('JavaScript');
+    const [apiResponse, setApiResponse] = useState('');
     const [generatedCode, setGeneratedCode] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [showGeneratedForm, setShowGeneratedForm] = useState(false);
+    const [showApiResponse, setShowApiResponse] = useState(false);
+    const [showGeneratedCode, setShowGeneratedCode] = useState(false);
 
-    const handleParamChange = (index, field, value) => {
-        const newParams = [...params];
-        newParams[index][field] = value;
-        setParams(newParams);
+    const addField = () => {
+        setFields([...fields, { type: 'text', name: '' }]);
+        setFieldCount(fieldCount + 1);
     };
 
-    const addParam = () => {
-        setParams([...params, { name: '', type: 'string' }]);
+    const removeField = (index) => {
+        const newFields = fields.filter((_, i) => i !== index);
+        setFields(newFields);
     };
 
-    const removeParam = (index) => {
-        const newParams = params.filter((_, i) => i !== index);
-        setParams(newParams);
+    const handleFieldChange = (index, field, value) => {
+        const newFields = [...fields];
+        newFields[index][field] = value;
+        setFields(newFields);
     };
 
-    const handleGenerate = async () => {
-        setLoading(true);
-        setError('');
-        setGeneratedCode('');
+    const handleGenerateForm = () => {
+        setShowGeneratedForm(true);
+        setShowApiResponse(true);
+        setShowGeneratedCode(true);
+        let formHTML = '<form id="dynamicForm">';
+        fields.forEach((field, index) => {
+            if (field.type === 'select') {
+                formHTML += `<label for="${field.name}">${field.name}:</label><select id="${field.name}" name="${field.name}" required>`;
+                // Add options logic here
+                formHTML += '</select>';
+            } else {
+                formHTML += `<label for="${field.name}">${field.name}:</label><input type="${field.type}" id="${field.name}" name="${field.name}" required>`;
+            }
+        });
+        formHTML += '<button type="submit">Submit</button></form>';
+        document.getElementById('generatedForm').innerHTML = formHTML;
 
-        // Filter out empty parameter names
-        const filteredParams = params.filter(p => p.name.trim() !== '');
-
-        try {
-            const response = await axios.post('/generate-code', {
-                endpoint,
-                method,
-                params: filteredParams,
-                language
+        // Handle dynamic form submission
+        document.getElementById('dynamicForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const data = {};
+            formData.forEach((value, key) => {
+                data[key] = value;
             });
-            setGeneratedCode(response.data.code);
-        } catch (err) {
-            setError(err.response?.data?.error || 'An error occurred.');
-        } finally {
-            setLoading(false);
-        }
-    };
 
-    const handleDownload = () => {
-        const element = document.createElement("a");
-        const file = new Blob([generatedCode], { type: 'text/plain' });
-        element.href = URL.createObjectURL(file);
-        element.download = `api_integration.${language === 'JavaScript' ? 'js' : 'py'}`;
-        document.body.appendChild(element); // Required for this to work in FireFox
-        element.click();
+            fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + apiToken
+                },
+                body: JSON.stringify({
+                    userId: userId,
+                    password: password,
+                    ...data
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                setApiResponse(JSON.stringify(data, null, 2));
+                const code = `
+                    fetch('${endpoint}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ${apiToken}'
+                        },
+                        body: JSON.stringify({
+                            userId: '${userId}',
+                            password: '${password}',
+                            ${Object.keys(data).map(key => `${key}: '${data[key]}'`).join(',\n')}
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('API Response:', data);
+                    })
+                    .catch((error) => {
+                        console.error('Error:', error);
+                    });
+                `;
+                setGeneratedCode(code);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+        });
     };
 
     return (
-        <div className="container">
-            <h1 className="title">API Integration Code Generator Demo</h1>
-            
-            <div className="form-section">
-                <div className="form-group">
-                    <label>API Endpoint:</label>
-                    <input
-                        type="text"
-                        value={endpoint}
-                        onChange={(e) => setEndpoint(e.target.value)}
-                        placeholder="https://api.example.com/v1/data"
-                        className="input-field"
-                    />
-                </div>
+        <div className="max-w-3xl mx-auto p-8 bg-gradient-to-r from-gray-300 to-gray-100 rounded-lg shadow-lg mt-12 border border-black">
+            <h1 className="text-3xl font-bold text-black mb-8 text-center">API Integration Form Builder</h1>
 
-                <div className="form-group">
-                    <label>HTTP Method:</label>
-                    <select value={method} onChange={(e) => setMethod(e.target.value)} className="select-field">
-                        <option>GET</option>
-                        <option>POST</option>
-                        <option>PUT</option>
-                        <option>DELETE</option>
-                    </select>
-                </div>
-
-                <div className="form-group">
-                    <label>Parameters:</label>
-                    {params.map((param, index) => (
-                        <div key={index} className="param-row">
-                            <input
-                                type="text"
-                                placeholder="Name"
-                                value={param.name}
-                                onChange={(e) => handleParamChange(index, 'name', e.target.value)}
-                                className="input-field param-input"
-                            />
-                            <select
-                                value={param.type}
-                                onChange={(e) => handleParamChange(index, 'type', e.target.value)}
-                                className="select-field param-select"
-                            >
-                                <option>string</option>
-                                <option>number</option>
-                                <option>boolean</option>
-                            </select>
-                            <button onClick={() => removeParam(index)} className="remove-btn">Remove</button>
-                        </div>
-                    ))}
-                    <button onClick={addParam} className="add-btn">Add Parameter</button>
-                </div>
-
-                <div className="form-group">
-                    <label>Language:</label>
-                    <select value={language} onChange={(e) => setLanguage(e.target.value)} className="select-field">
-                        <option>JavaScript</option>
-                        <option>Python</option>
-                    </select>
-                </div>
-
-                <button onClick={handleGenerate} className="generate-btn" disabled={loading}>
-                    {loading ? 'Generating...' : 'Generate Code'}
-                </button>
-
-                {error && <div className="error-message">{error}</div>}
+            <div className="bg-gray-200 p-4 rounded-md mb-8">
+                <h2 className="text-xl font-semibold text-black mb-2">Important Security Notice</h2>
+                <p className="text-gray-700">Please do not store your API tokens, user IDs, or passwords directly in the front-end code. Use environment variables or a secure server to manage sensitive information.</p>
             </div>
 
-            {generatedCode && (
-                <div className="code-section">
-                    <h2>Generated Code:</h2>
-                    <SyntaxHighlighter language={language.toLowerCase()} style={docco}>
-                        {generatedCode}
-                    </SyntaxHighlighter>
-                    <div className="download-section">
-                        <button onClick={handleDownload} className="download-btn">
-                            Download Code
-                        </button>
-                    </div>
+            <div className="bg-white p-4 rounded-md mb-8">
+                <h2 className="text-xl font-semibold text-black mb-4">Add Input Fields</h2>
+                <div id="fieldList">
+                    {fields.map((field, index) => (
+                        <div key={index} className="field-container">
+                            <label htmlFor={`field${index}`}>Field {index + 1}:</label>
+                            <select value={field.type} onChange={(e) => handleFieldChange(index, 'type', e.target.value)}>
+                                <option value="text">Text</option>
+                                <option value="checkbox">Checkbox</option>
+                                <option value="select">Select</option>
+                            </select>
+                            <input type="text" value={field.name} onChange={(e) => handleFieldChange(index, 'name', e.target.value)} placeholder="Field Name" required />
+                            <button type="button" onClick={() => removeField(index)}>Remove Field</button>
+                        </div>
+                    ))}
+                </div>
+                <button onClick={addField}>Add Field</button>
+            </div>
+
+            <div className="bg-white p-4 rounded-md mb-8">
+                <h2 className="text-xl font-semibold text-black mb-4">API Credentials</h2>
+                <label htmlFor="apiToken">API Token:</label>
+                <input type="text" id="apiToken" value={apiToken} onChange={(e) => setApiToken(e.target.value)} placeholder="Enter API token" required />
+
+                <label htmlFor="userId">User ID:</label>
+                <input type="text" id="userId" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="Enter user ID" required />
+
+                <label htmlFor="password">Password:</label>
+                <input type="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" required />
+
+                <label htmlFor="endpoint">API Endpoint:</label>
+                <input type="text" id="endpoint" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="Enter API endpoint" required />
+
+                <button onClick={handleGenerateForm}>Generate Form</button>
+            </div>
+
+            {showGeneratedForm && (
+                <div>
+                    <h2 className="text-xl font-semibold text-black mb-4">Generated Form:</h2>
+                    <div id="generatedForm"></div>
+                </div>
+            )}
+
+            {showApiResponse && (
+                <div>
+                    <h2 className="text-xl font-semibold text-black mb-4">API Response:</h2>
+                    <pre id="apiResponse">{apiResponse}</pre>
+                </div>
+            )}
+
+            {showGeneratedCode && (
+                <div>
+                    <h2 className="text-xl font-semibold text-black mb-4">Generated Code:</h2>
+                    <pre id="generatedCode">{generatedCode}</pre>
                 </div>
             )}
         </div>
